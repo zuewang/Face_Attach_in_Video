@@ -4,18 +4,18 @@ import imutils
 import time
 
 start_time = time.time()
-
-upper_img = cv2.imread("pic/cirno_face.png", -1)
+upper_img = cv2.imread("pic/pig.png", -1)
 # Get user supplied values
 #imagePath = sys.argv[1]
 imagePath = "pic/campus.png"
 # Read the image
 image = cv2.imread(imagePath)
 gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
 #load cascades
 faceCascade = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
 eyeCascade = cv2.CascadeClassifier("haarcascade_eye.xml")
+
+
 
 def drawHead(frame, faces, eyes):
     for (ex,ey,ew,eh) in eyes:
@@ -23,11 +23,11 @@ def drawHead(frame, faces, eyes):
     # Draw a picture over the faces
     for (x, y, w, h) in faces:
         
-        cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        #cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
         cx = y+h/2
         cy = x+w/2
-        upper2 = imutils.resize(upper_img, width=int(min(1.5*w, 1.5*upper_img.shape[1])))
-       
+        upper2 = imutils.resize(upper_img, width=int(min(h, upper_img.shape[1])))
+        #upper2 = imutils.resize(upper1, width=int(min(w, upper1.shape[0])))
         uh = upper2.shape[0]
         uw = upper2.shape[1]
         '''
@@ -41,7 +41,7 @@ def drawHead(frame, faces, eyes):
         '''
         # deal with alpha
         #frame[y:y+uh,x:x+uw] = upper2
-        '''
+        
         for c in range(0,3):
             #print('c= ',c)
             # in case face move out of border
@@ -50,75 +50,105 @@ def drawHead(frame, faces, eyes):
             x2 = cx-uw/2+uw
             y1 = cy-uh/2
             y2 = cy-uh/2+uh
-            outrangex1 = max(-x1,0)
-            outrangex2 = max(x2-w+1,0)
-            outrangey1 = max(-y1,0)
-            outrangey2 = max(y2-h+1,0)
-            frame[y:y+uh,x:x+uw, c] =  \
-                upper2[:,:,c] * (upper2[:,:,3]/255.0) +\
-                frame[y:y+uh,x:x+uw, c] * \
-                (1.0 - upper2[:,:,3]/255.0)
-        '''
+            ox1 = max(-x1,0)
+            ox2 = max(x2-w+1,0)
+            oy1 = max(-y1,0)
+            oy2 = max(y2-h+1,0)
+
+            mh = min(h,upper2.shape[1])
+            mw = min(w,upper2.shape[0])
+            frame[y:y+mh,x:x+mw, c] =  \
+                upper2[:mh,:mw,c] * (upper2[:mh,:mw,3]/255.0) +\
+                frame[y:y+mh,x:x+mw,c] * \
+                (1.0 - upper2[:mh,:mw,3]/255.0)
+        
     return frame
 
 
 
 
+if __name__ == "__main__":
 
-
-video_path = "video/1.mp4"
-camera = cv2.VideoCapture(video_path)
-while not camera.isOpened():
+    
+    video_path = sys.argv[1]# "video/1.mp4"
+    sample_rate = int(sys.argv[2])
+    cursor = 0
+    
+    #print sys.argv[1]
     camera = cv2.VideoCapture(video_path)
-    cv2.waitKey(1000)
-    print "wait for header"
-if camera.isOpened():
-    print "camera opened"
-fourcc = cv2.cv.CV_FOURCC('M','J','P','G')
-fps=20.0
-out_video = cv2.VideoWriter('output.avi',fourcc, fps, (800,450), True)
-while True:
-    #previous_frame = frame_resized_grayscale
+    while not camera.isOpened():
+        camera = cv2.VideoCapture(video_path)
+        cv2.waitKey(1000)
+        print "wait for header"
+    if camera.isOpened():
+        print "camera opened"
+
+    #setup videowriter properties
+    fourcc = cv2.cv.CV_FOURCC('M','J','P','G')
+    fps = camera.get(cv2.cv.CV_CAP_PROP_FPS)  #?20.0
+    print('fps = ',fps)
+
+    #get one frame
     grabbed, frame = camera.read()
-    if not grabbed:
-        break
-    
-    #print(frame.shape)
     frame_resized = imutils.resize(frame, width=min(800, frame.shape[1]))
-    #print(frame_resized.shape)
     frame_resized_grayscale = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2GRAY)
-    #print('frame_resized: ',frame_resized.shape)
-    #print('frame_resized_grayscale: ',frame_resized_grayscale.shape)
         
+    out_video = cv2.VideoWriter('output.avi',fourcc, fps, (frame_resized.shape[1],frame_resized.shape[0]), True)
+    last_faces = 0
     
+    while True:
+        previous_frame = frame_resized_grayscale
+        previous_faces = last_faces
+        grabbed, frame = camera.read()
+        if not grabbed:
+            break
+        
+        #print(frame.shape)
+        frame_resized = imutils.resize(frame, width=min(800, frame.shape[1]))
+        #print(frame_resized.shape)
+        frame_resized_grayscale = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2GRAY)
+        #print('frame_resized: ',frame_resized.shape)
+        #print('frame_resized_grayscale: ',frame_resized_grayscale.shape)
+            
+        
 
+        if cursor == 0:
+            # detect faces
+            faces = faceCascade.detectMultiScale(
+                frame_resized_grayscale,
+                scaleFactor=1.1,
+                minNeighbors=5,
+                minSize=(5, 5),
+                flags = cv2.cv.CV_HAAR_SCALE_IMAGE
+            )
+            eyes = eyeCascade.detectMultiScale(frame_resized_grayscale)
 
-    # detect faces
-    faces = faceCascade.detectMultiScale(
-        frame_resized_grayscale,
-        scaleFactor=1.1,
-        minNeighbors=5,
-        minSize=(5, 5),
-        flags = cv2.cv.CV_HAAR_SCALE_IMAGE
-    )
-    eyes = eyeCascade.detectMultiScale(frame_resized_grayscale)
+            
+            if len(faces):
+                #cv2.imshow("frame_resized",frame_resized)
+                #important to show image
+                #cv2.waitKey(0)
+                frame_processed = drawHead(frame_resized, faces, eyes)
+                #cv2.imshow("Detected Human and face", frame_processed)
+                last_faces = faces
+            #elif type(last_faces) != type(0):
+                #frame_processed = drawHead(frame_resized, last_faces, eyes)
+            else:
+                frame_processed = frame_resized
 
-    
-    if len(faces):
-        #cv2.imshow("frame_resized",frame_resized)
-        #important to show image
-        #cv2.waitKey(0)
-        frame_processed = drawHead(frame_resized, faces, eyes)
-        #cv2.imshow("Detected Human and face", frame_processed)
+        elif type(last_faces) != type(0):
+            frame_processed = drawHead(frame_resized, last_faces, eyes)
+        else:
+            frame_processed = frame_resized            
         key = cv2.waitKey(1) & 0xFF
-        #print(frame_processed.shape)
         out_video.write(frame_processed)
-    
-#camera.release()
-cv2.destroyAllWindows()
-out_video.release()
+        cursor = (cursor + 1)%sample_rate
+        
+    #camera.release()
+    cv2.destroyAllWindows()
+    out_video.release()
 
-print('time spent: ', time.time()-start_time)
+    print('time spent: ', time.time()-start_time)
 
 '''
 
