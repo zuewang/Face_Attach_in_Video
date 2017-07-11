@@ -18,19 +18,36 @@ eyeCascade = cv2.CascadeClassifier("haarcascade_eye.xml")
 
 
 def drawHead(frame, faces, eyes):
+    '''
+    uw: upper width, uh: upper height
+    x,y,w,h: horizontal to right, vertical to bottom
+    frame shape: (450, 800, 3) <= (height, width, dimensions)
+    '''
+    #height and width of frame
+    fh = frame.shape[0]
+    fw = frame.shape[1]
+
     for (ex,ey,ew,eh) in eyes:
         cv2.rectangle(frame,(ex,ey),(ex+ew,ey+eh),(255,0,0),2)
     # Draw a picture over the faces
     for (x, y, w, h) in faces:
         
+        #draw rectangle
         #cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
-        cx = y+h/2
-        cy = x+w/2
+
+        #center of face
+        cy = y+h/2
+        cx = x+w/2
+
         upper2 = imutils.resize(upper_img, width=int(min(h, upper_img.shape[1])))
         #upper2 = imutils.resize(upper1, width=int(min(w, upper1.shape[0])))
         uh = upper2.shape[0]
         uw = upper2.shape[1]
         '''
+        print('upper2.shape: ',upper2.shape,' uh ',uh,' uw ',uw)
+        print('x,y,w,h: ',(x,y,w,h))
+        print('frame resized shape: ',frame_resized.shape)
+        
         print('(x,y,w,h): ',(x,y,w,h))
         print('frame: ',frame.shape,', upper: ', upper2.shape)
         print('cy, cx: ', cy, ', ',cx)
@@ -41,27 +58,49 @@ def drawHead(frame, faces, eyes):
         '''
         # deal with alpha
         #frame[y:y+uh,x:x+uw] = upper2
-        
+
+        # in case face move out of border
+        # use cy-uh/2+uh instead of cy+uh/2 to keep the length
+
+        #range of coordinates of upper in frame
+        x1 = cx-uw/2
+        x2 = cx-uw/2+uw
+        y1 = cy-uh/2
+        y2 = cy-uh/2+uh
+        #the range of coordinates of upper laying outside border of frame
+        ox1 = max(0-x1,0)
+        ox2 = max(x2-(fw-1),0)
+        oy1 = max(0-y1,0)
+        oy2 = max(y2-(fh-1),0)
+        #range of coordinates of upper within frame
+        x11 = x1 + ox1
+        x21 = x2 - ox2
+        y11 = y1 + oy1
+        y21 = y2 - oy2
+        #range of coordinates of upper itself within frame
+        x12 = ox1
+        x22 = uw - ox2
+        y12 = oy1
+        y22 = uh - oy2
+
+        mh = min(h,upper2.shape[1])
+        mw = min(w,upper2.shape[0])
+
         for c in range(0,3):
             #print('c= ',c)
-            # in case face move out of border
-            # use cy-uh/2+uh instead of cy+uh/2 to keep the length
-            x1 = cx-uw/2
-            x2 = cx-uw/2+uw
-            y1 = cy-uh/2
-            y2 = cy-uh/2+uh
-            ox1 = max(-x1,0)
-            ox2 = max(x2-w+1,0)
-            oy1 = max(-y1,0)
-            oy2 = max(y2-h+1,0)
 
-            mh = min(h,upper2.shape[1])
-            mw = min(w,upper2.shape[0])
+            
+            frame[y11:y21,x11:x21, c] =  \
+                upper2[y12:y22,x12:x22,c] * (upper2[y12:y22,x12:x22,3]/255.0) +\
+                frame[y11:y21,x11:x21,c] * \
+                (1.0 - upper2[y12:y22,x12:x22,3]/255.0)
+            
+            '''
             frame[y:y+mh,x:x+mw, c] =  \
                 upper2[:mh,:mw,c] * (upper2[:mh,:mw,3]/255.0) +\
                 frame[y:y+mh,x:x+mw,c] * \
                 (1.0 - upper2[:mh,:mw,3]/255.0)
-        
+            '''
     return frame
 
 
@@ -127,8 +166,8 @@ if __name__ == "__main__":
             if len(faces):
                 #cv2.imshow("frame_resized",frame_resized)
                 #important to show image
-                #cv2.waitKey(0)
                 frame_processed = drawHead(frame_resized, faces, eyes)
+                #cv2.waitKey(0)
                 #cv2.imshow("Detected Human and face", frame_processed)
                 last_faces = faces
             #elif type(last_faces) != type(0):
