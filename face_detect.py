@@ -38,8 +38,9 @@ def drawHead(frame, faces, eyes):
         #center of face
         cy = y+h/2
         cx = x+w/2
-
-        upper2 = imutils.resize(upper_img, width=int(min(h, upper_img.shape[1])))
+        #make upper bigger to cover head
+        scale_upper = 2 
+        upper2 = imutils.resize(upper_img, width=int(min(scale_upper*h, scale_upper*upper_img.shape[1])))
         #upper2 = imutils.resize(upper1, width=int(min(w, upper1.shape[0])))
         uh = upper2.shape[0]
         uw = upper2.shape[1]
@@ -129,6 +130,7 @@ if __name__ == "__main__":
 
     #get one frame
     grabbed, frame = camera.read()
+
     frame_resized = imutils.resize(frame, width=min(800, frame.shape[1]))
     frame_resized_grayscale = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2GRAY)
         
