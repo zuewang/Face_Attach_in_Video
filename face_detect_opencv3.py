@@ -2,6 +2,10 @@ import cv2
 import sys
 import imutils
 import time
+import numpy as np
+
+#neighborhood area scale parameter
+nsp = 2.0
 
 start_time = time.time()
 upper_img = cv2.imread("pic/pig.png", -1)
@@ -16,6 +20,76 @@ faceCascade = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
 eyeCascade = cv2.CascadeClassifier("haarcascade_eye.xml")
 
 
+def templateMatching(frame,previous_face):
+    # ref: http://docs.opencv.org/trunk/d4/dc6/tutorial_py_template_matching.html
+    faces = []
+    res = cv2.matchTemplate(frame,previous_face,cv2.TM_CCOEFF_NORMED)
+    threshold = 0.95
+    loc = np.where( res >= threshold)
+    for pt in zip(*loc[::-1]):
+        faces.append([pt[0],pt[1],previous_face.shape[1],previous_face.shape[0]])
+        #only append 1 face
+        break
+
+    return faces
+
+def detectFace(frame,face_cascade,previous_frame,previous_faces):
+    faces = face_cascade.detectMultiScale(
+        frame,
+        scaleFactor=1.1,
+        minNeighbors=5,
+        minSize=(5, 5),
+        flags = cv2.CASCADE_SCALE_IMAGE
+    )
+    if (len(faces) == 0):
+        faces = []
+        for (x,y,w,h) in previous_faces:
+            #border of neighborhood area: frame[y1:y2,x1:x2]
+            x1 = max(0, int(x+(1-nsp)*w/2))
+            x2 = min(frame.shape[1]-1, int(x+(1+nsp)*w/2))
+            y1 = max(0, int(y+(1-nsp)*h/2))
+            y2 = min(frame.shape[0]-1, int(y+(1+nsp)*h/2))
+            
+            temp_faces = templateMatching(frame[y1:y2,x1:x2],previous_frame[y:y+h,x:x+w])
+            
+            for (tx,ty,tw,th) in temp_faces:
+                faces.append([tx+x1,ty+y1,tw,th])
+    return faces
+    # algorithm ref: https://github.com/hrastnik/face_detect_n_track
+    # if face found in previous frame
+    '''
+    if type(previous_faces) != type(0) and len(previous_faces):
+        faces = []
+        for (x,y,w,h) in previous_faces:
+            #border of neighborhood area: frame[y1:y2,x1:x2]
+            x1 = max(0, int(x+(1-nsp)*w/2))
+            x2 = min(frame.shape[1]-1, int(x+(1+nsp)*w/2))
+            y1 = max(0, int(y+(1-nsp)*h/2))
+            y2 = min(frame.shape[0]-1, int(y+(1+nsp)*h/2))
+            
+            temp_faces = (face_cascade.detectMultiScale(
+                frame[y1:y2,x1:x2],
+                scaleFactor=1.1,
+                minNeighbors=5,
+                minSize=(5, 5),
+                flags = cv2.CASCADE_SCALE_IMAGE
+            ))
+            if (len(temp_faces)):
+                for (tx,ty,tw,th) in temp_faces:
+                    faces.append([tx+x1,ty+y1,tw,th])
+                return faces
+            else:
+                return templateMatching(frame,previous_frame,previous_faces)
+    else:
+        #search whole frame
+        return face_cascade.detectMultiScale(
+            frame,
+            scaleFactor=1.1,
+            minNeighbors=5,
+            minSize=(5, 5),
+            flags = cv2.CASCADE_SCALE_IMAGE
+        )
+    '''    
 
 def drawHead(frame, faces):
     '''
@@ -45,15 +119,8 @@ def drawHead(frame, faces):
         print('upper2.shape: ',upper2.shape,' uh ',uh,' uw ',uw)
         print('x,y,w,h: ',(x,y,w,h))
         print('frame resized shape: ',frame_resized.shape)
-        
-        print('(x,y,w,h): ',(x,y,w,h))
-        print('frame: ',frame.shape,', upper: ', upper2.shape)
-        print('cy, cx: ', cy, ', ',cx)
-        print(cy-uh/2,' ',cy-uh/2+uh)
-        print(frame[cy-uh/2:cy-uh/2+uh, cx-uw/2:cx-uw/2+uw, 0].shape)
-        print(frame[cy-uh/2:cy-uh/2+uh, cx-uw/2:cx-uw/2+uw, 1].shape)
-        print(frame[cy-uh/2:cy-uh/2+uh, cx-uw/2:cx-uw/2+uw, 2].shape)
         '''
+
         # deal with alpha
         #frame[y:y+uh,x:x+uw] = upper2
 
@@ -85,20 +152,11 @@ def drawHead(frame, faces):
         mw = min(w,upper2.shape[0])
 
         for c in range(0,3):
-            #print('c= ',c)
-
-            
             frame[y11:y21,x11:x21, c] =  \
                 upper2[y12:y22,x12:x22,c] * (upper2[y12:y22,x12:x22,3]/255.0) +\
                 frame[y11:y21,x11:x21,c] * \
                 (1.0 - upper2[y12:y22,x12:x22,3]/255.0)
-            
-            '''
-            frame[y:y+mh,x:x+mw, c] =  \
-                upper2[:mh,:mw,c] * (upper2[:mh,:mw,3]/255.0) +\
-                frame[y:y+mh,x:x+mw,c] * \
-                (1.0 - upper2[:mh,:mw,3]/255.0)
-            '''
+
     return frame
 
 
@@ -123,7 +181,7 @@ if __name__ == "__main__":
     #setup videowriter properties
     fourcc = cv2.VideoWriter_fourcc(*'XVID')#'M','J','P','G')
     fps = camera.get(cv2.CAP_PROP_FPS)  #?20.0
-    print('fps = ',fps)
+    print('source video fps = ',fps)
 
     #get one frame
     grabbed, frame = camera.read()
@@ -152,13 +210,8 @@ if __name__ == "__main__":
 
         if cursor == 0:
             # detect faces
-            faces = faceCascade.detectMultiScale(
-                frame_resized_grayscale,
-                scaleFactor=1.1,
-                minNeighbors=5,
-                minSize=(5, 5),
-                flags = cv2.CASCADE_SCALE_IMAGE
-            )
+            faces = detectFace(frame_resized_grayscale, faceCascade, previous_frame, previous_faces)
+            #print(faces)
             #eyes = eyeCascade.detectMultiScale(frame_resized_grayscale)
 
             
@@ -173,32 +226,16 @@ if __name__ == "__main__":
                 #frame_processed = drawHead(frame_resized, last_faces, eyes)
             else:
                 frame_processed = frame_resized
-
-        elif type(last_faces) != type(0):
-            frame_processed = drawHead(frame_resized, last_faces)
+        #elif type(last_faces) != type(0):
+        #    frame_processed = drawHead(frame_resized, last_faces)
         else:
             frame_processed = frame_resized            
         key = cv2.waitKey(1) & 0xFF
         out_video.write(frame_processed)
         cursor = (cursor + 1)%sample_rate
-        
+    print('over')
     #camera.release()
     cv2.destroyAllWindows()
     out_video.release()
 
     print('time spent: ', time.time()-start_time)
-
-'''
-
-# Detect faces in the image
-# faces = faceCascade.detectMultiScale(image, 1.1, 2, 0, (20, 20) )
-
-
-print("Found {0} faces!".format(len(faces)))
-drawHead(image,faces)
-        #image[y:y+upper_img.shape[0],x:x+upper_img.shape[1]]=upper_img
-        #cv2.rectangle(image, (x, y), (x+w, y+h), (0, 255, 0), 2)
-
-cv2.imshow("Faces found", image)
-cv2.waitKey(0)
-'''
