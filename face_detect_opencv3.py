@@ -7,29 +7,31 @@ import numpy as np
 #neighborhood area scale parameter
 nsp = 2.0
 
+#mode--- 0:face detection; 1:template matching
+mode = 1
+
 start_time = time.time()
-upper_img = cv2.imread("pic/pig.png", -1)
-# Get user supplied values
-#imagePath = sys.argv[1]
-imagePath = "pic/campus.png"
-# Read the image
-image = cv2.imread(imagePath)
-gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+#upper image to cover detected head
+upper_img = cv2.imread("pic/yushenmu.png",-1)
+template_img = cv2.imread("pic/sword_pal.png")
 #load cascades
 faceCascade = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
 eyeCascade = cv2.CascadeClassifier("haarcascade_eye.xml")
 
 
-def templateMatching(frame,previous_face):
+def templateMatching(frame,previous_face,max_face):
     # ref: http://docs.opencv.org/trunk/d4/dc6/tutorial_py_template_matching.html
     faces = []
     res = cv2.matchTemplate(frame,previous_face,cv2.TM_CCOEFF_NORMED)
-    threshold = 0.95
+    threshold = 0.8
     loc = np.where( res >= threshold)
+    face_count = 0
     for pt in zip(*loc[::-1]):
         faces.append([pt[0],pt[1],previous_face.shape[1],previous_face.shape[0]])
-        #only append 1 face
-        break
+        face_count += 1
+        if max_face > 0 and face_count >= max_face:
+            break
+        
 
     return faces
 
@@ -50,7 +52,7 @@ def detectFace(frame,face_cascade,previous_frame,previous_faces):
             y1 = max(0, int(y+(1-nsp)*h/2))
             y2 = min(frame.shape[0]-1, int(y+(1+nsp)*h/2))
             
-            temp_faces = templateMatching(frame[y1:y2,x1:x2],previous_frame[y:y+h,x:x+w])
+            temp_faces = templateMatching(frame[y1:y2,x1:x2],previous_frame[y:y+h,x:x+w],1)
             
             for (tx,ty,tw,th) in temp_faces:
                 faces.append([tx+x1,ty+y1,tw,th])
@@ -190,7 +192,7 @@ if __name__ == "__main__":
     frame_resized_grayscale = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2GRAY)
         
     out_video = cv2.VideoWriter('output.avi',fourcc, fps, (frame_resized.shape[1],frame_resized.shape[0]), True)
-    last_faces = 0
+    last_faces = []
     
     while True:
         previous_frame = frame_resized_grayscale
@@ -201,35 +203,51 @@ if __name__ == "__main__":
         
         #print(frame.shape)
         frame_resized = imutils.resize(frame, width=min(800, frame.shape[1]))
+        temimg_resized = imutils.resize(template_img, width=min(800*template_img.shape[1]/frame.shape[1], template_img.shape[1]))
         #print(frame_resized.shape)
         frame_resized_grayscale = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2GRAY)
+        temimg_resized_grayscale = cv2.cvtColor(temimg_resized, cv2.COLOR_BGR2GRAY)
         #print('frame_resized: ',frame_resized.shape)
         #print('frame_resized_grayscale: ',frame_resized_grayscale.shape)
             
-        
+        # if use face detection
+        if mode == 0:
+            if cursor == 0:
+                # detect faces
+                faces = detectFace(frame_resized_grayscale, faceCascade, previous_frame, previous_faces)
+                #print(faces)
+                #eyes = eyeCascade.detectMultiScale(frame_resized_grayscale)
 
-        if cursor == 0:
-            # detect faces
-            faces = detectFace(frame_resized_grayscale, faceCascade, previous_frame, previous_faces)
-            #print(faces)
-            #eyes = eyeCascade.detectMultiScale(frame_resized_grayscale)
-
-            
-            if len(faces):
-                #cv2.imshow("frame_resized",frame_resized)
-                #important to show image
-                frame_processed = drawHead(frame_resized, faces)
-                #cv2.waitKey(0)
-                #cv2.imshow("Detected Human and face", frame_processed)
-                last_faces = faces
+                
+                if len(faces):
+                    #cv2.imshow("frame_resized",frame_resized)
+                    #important to show image
+                    frame_processed = drawHead(frame_resized, faces)
+                    #cv2.waitKey(0)
+                    #cv2.imshow("Detected Human and face", frame_processed)
+                    last_faces = faces
+                #elif type(last_faces) != type(0):
+                    #frame_processed = drawHead(frame_resized, last_faces, eyes)
+                else:
+                    frame_processed = frame_resized
             #elif type(last_faces) != type(0):
-                #frame_processed = drawHead(frame_resized, last_faces, eyes)
+            #    frame_processed = drawHead(frame_resized, last_faces)
             else:
-                frame_processed = frame_resized
-        #elif type(last_faces) != type(0):
-        #    frame_processed = drawHead(frame_resized, last_faces)
-        else:
-            frame_processed = frame_resized            
+                frame_processed = frame_resized            
+            
+        # if use only template matching
+        elif mode == 1:
+            rows, cols = temimg_resized_grayscale.shape
+            faces = []
+            for angle in [0, 180]:
+                #rotate template image
+                M = cv2.getRotationMatrix2D((cols/2,rows/2),angle,1)
+                dst = cv2.warpAffine(temimg_resized_grayscale,M,(cols,rows))
+                faces.extend(templateMatching(frame_resized_grayscale, dst, -1))
+            frame_processed = drawHead(frame_resized, faces)
+            #cv2.waitKey(0)
+            #cv2.imshow("Detected templates", frame_processed)
+        #cv2.imwrite('sword.png',frame_resized)
         key = cv2.waitKey(1) & 0xFF
         out_video.write(frame_processed)
         cursor = (cursor + 1)%sample_rate
