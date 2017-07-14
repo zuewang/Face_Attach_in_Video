@@ -8,4 +8,6 @@
 ## Usage  
 + `upper_img = cv2.imread("pic/pig.png", -1)`
 + Run `python [script name] [path to video] [fsr]`    
-+ (fsr: frame sample rate, an integer which means sampling one frame every fsr frames from the original video)
++ (fsr: frame sample rate, an integer which means sampling one frame every fsr frames from the original video)   
+##  `audio.py` (not finished)   
++ Fake MAD video generation
